@@ -1,5 +1,0 @@
-# Local tooling for the generator + setup scripts (run on your laptop / workshop host).
-# Databricks notebooks/pipelines use the built-in runtime and do NOT need these.
-psycopg2-binary>=2.9.9
-Faker>=25.0.0
-python-dateutil>=2.9.0

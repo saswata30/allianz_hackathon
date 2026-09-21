@@ -1,19 +1,16 @@
 # Databricks notebook source
 # =============================================================================
-# Medallion (Lakeflow Declarative Pipelines / DLT) — SILVER + GOLD
-#   bronze.claims_raw  (written by 01_bronze_ingest, zero-copy from Lakebase)
-#      -> silver.claims          streaming table + DATA QUALITY expectations
-#      -> gold.claims_by_lob_region
-#      -> gold.loss_ratio        (correlation with firmwide reference Delta)
-#      -> gold.claims_daily
+# 07 · Medallion (Lakeflow Declarative Pipelines / DLT) — SILVER + GOLD
+#   bronze.claims_raw  (written by notebook 06, zero-copy from Lakebase)
+#      -> silver.claims        streaming table + DATA QUALITY expectations
+#      -> gold_claims_by_lob_region
+#      -> gold_loss_ratio      (CORRELATION with firmwide reference Delta)
+#      -> gold_claims_daily
 #
-# Attach this file to a Lakeflow Declarative Pipeline (see pipelines/pipeline.json).
-# Pipeline configuration keys (Advanced > Configuration):
-#   hackathon.catalog          = allianz_hackathon
-#   hackathon.bronze_schema    = bronze
-#   hackathon.reference_schema = reference
-# Pipeline target: catalog=allianz_hackathon, schema=silver  (gold tables are
-# written with explicit gold.* names).
+# Attach this notebook to a Lakeflow Declarative Pipeline (notebook 10 creates it).
+# DLT reads config from the pipeline "Configuration" (defaults below match 00_config):
+#   hackathon.catalog=allianz_hackathon  hackathon.bronze_schema=bronze  hackathon.reference_schema=reference
+# Pipeline target catalog=allianz_hackathon, target schema=silver.
 # =============================================================================
 import dlt
 from pyspark.sql import functions as F
@@ -28,15 +25,14 @@ FIRMWIDE_TABLE = f"{CATALOG}.{REFERENCE}.firmwide_exposure"
 VALID_LOBS = ["Property", "Motor", "Liability", "Marine", "Health", "Life"]
 VALID_CCY = ["EUR", "GBP", "CHF", "USD"]
 
-# --- Data quality rules -------------------------------------------------------
-DQ_DROP = {  # violating rows are DROPPED and counted in the pipeline's DQ metrics
+DQ_DROP = {
     "valid_claim_id": "claim_id IS NOT NULL",
     "valid_policy_id": "policy_id IS NOT NULL",
     "positive_amount": "claim_amount > 0",
     "valid_lob": f"lob IN ({', '.join(repr(x) for x in VALID_LOBS)})",
     "valid_currency": f"currency IN ({', '.join(repr(x) for x in VALID_CCY)})",
 }
-DQ_WARN = {  # violating rows are KEPT but flagged in metrics
+DQ_WARN = {
     "dates_consistent": "reported_date >= incident_date",
     "amount_not_extreme": "claim_amount < 5000000",
 }
@@ -76,11 +72,9 @@ def silver_claims():
 
 
 # ============================== GOLD =========================================
-@dlt.table(
-    name="gold_claims_by_lob_region",
-    comment="Claim counts & incurred amounts by line of business and region.",
-    table_properties={"quality": "gold"},
-)
+@dlt.table(name="gold_claims_by_lob_region",
+           comment="Claim counts & incurred amounts by line of business and region.",
+           table_properties={"quality": "gold"})
 def gold_claims_by_lob_region():
     return (
         dlt.read("claims")
@@ -97,53 +91,39 @@ def gold_claims_by_lob_region():
     )
 
 
-@dlt.table(
-    name="gold_loss_ratio",
-    comment="CORRELATION: streaming incurred claims vs firmwide written premium => loss ratio.",
-    table_properties={"quality": "gold"},
-)
+@dlt.table(name="gold_loss_ratio",
+           comment="CORRELATION: streaming incurred claims vs firmwide written premium => loss ratio.",
+           table_properties={"quality": "gold"})
 def gold_loss_ratio():
     claims = (
-        dlt.read("claims")
-        .groupBy("lob", "region")
-        .agg(
-            F.sum("claim_amount").alias("incurred_amount"),
-            F.count("*").alias("claim_txn_count"),
-        )
+        dlt.read("claims").groupBy("lob", "region")
+        .agg(F.sum("claim_amount").alias("incurred_amount"),
+             F.count("*").alias("claim_txn_count"))
     )
     firmwide = spark.read.table(FIRMWIDE_TABLE)
     return (
         claims.join(firmwide, ["lob", "region"], "right")
         .select(
-            "lob",
-            "region",
+            "lob", "region",
             F.coalesce("incurred_amount", F.lit(0)).cast("decimal(18,2)").alias("incurred_amount"),
             F.coalesce("claim_txn_count", F.lit(0)).alias("claim_txn_count"),
-            "gross_written_premium",
-            "target_loss_ratio",
+            "gross_written_premium", "target_loss_ratio",
             F.round(F.coalesce("incurred_amount", F.lit(0)) / F.col("gross_written_premium"), 4).alias("observed_loss_ratio"),
         )
-        .withColumn(
-            "vs_target",
-            F.when(F.col("observed_loss_ratio") > F.col("target_loss_ratio"), F.lit("OVER"))
-            .otherwise(F.lit("UNDER")),
-        )
+        .withColumn("vs_target",
+                    F.when(F.col("observed_loss_ratio") > F.col("target_loss_ratio"), F.lit("OVER")).otherwise(F.lit("UNDER")))
     )
 
 
-@dlt.table(
-    name="gold_claims_daily",
-    comment="Daily claim volume & incurred trend for the AI/BI dashboard.",
-    table_properties={"quality": "gold"},
-)
+@dlt.table(name="gold_claims_daily",
+           comment="Daily claim volume & incurred trend for the AI/BI dashboard.",
+           table_properties={"quality": "gold"})
 def gold_claims_daily():
     return (
         dlt.read("claims")
         .withColumn("event_date", F.to_date("event_ts"))
         .groupBy("event_date", "lob")
-        .agg(
-            F.count("*").alias("claim_txn_count"),
-            F.sum("claim_amount").alias("incurred_amount"),
-            F.avg("report_lag_days").alias("avg_report_lag_days"),
-        )
+        .agg(F.count("*").alias("claim_txn_count"),
+             F.sum("claim_amount").alias("incurred_amount"),
+             F.avg("report_lag_days").alias("avg_report_lag_days"))
     )
