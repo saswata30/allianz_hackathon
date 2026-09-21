@@ -1,0 +1,17 @@
+{
+  "name": "allianz_hackathon_medallion",
+  "catalog": "allianz_hackathon",
+  "schema": "silver",
+  "serverless": true,
+  "continuous": false,
+  "development": true,
+  "photon": true,
+  "libraries": [
+    { "notebook": { "path": "${WORKSPACE_DIR}/pipelines/medallion_dlt" } }
+  ],
+  "configuration": {
+    "hackathon.catalog": "allianz_hackathon",
+    "hackathon.bronze_schema": "bronze",
+    "hackathon.reference_schema": "reference"
+  }
+}

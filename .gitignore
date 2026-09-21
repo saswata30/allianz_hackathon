@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Local state / secrets
+*.env.local
+.databricks-token
+*.log
+.watermark
+run_artifacts/
+
+# OS
+.DS_Store
+
+# mermaid render scratch
+docs/mermaid-config.json
+docs/puppeteer-config.json
