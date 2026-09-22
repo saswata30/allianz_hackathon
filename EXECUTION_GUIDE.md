@@ -4,6 +4,8 @@ A step-by-step run book. Everything runs **inside Databricks** as notebooks — 
 profile, no workspace host. Each step lists **what to run**, **what you should see**, and a
 **verify** check. Estimated total: **~35–45 min** (most of it watching the 2-min stream).
 
+**Default path — Lakebase** (run in order):
+
 | Phase | Notebook | ~Time |
 |---|---|---|
 | 0 | Add repo to workspace | 3 min |
@@ -16,6 +18,23 @@ profile, no workspace host. Each step lists **what to run**, **what you should s
 | 7 | `08_dashboard` | 5 min |
 | 8 | `09_genie_setup` | 5 min |
 | — | `10_deploy_pipeline_and_jobs` (automates 5–7) | 3 min |
+| 9 | Demo / talk track | — |
+| 10 | Teardown | 3 min |
+
+**Optional path — Azure SQL Server** (run in order; a separate set of source notebooks, and
+`01` is skipped). See *Optional Phase — land in Azure SQL Server* below for the detail:
+
+| Phase | Notebook | ~Time |
+|---|---|---|
+| 0 | Add repo to workspace + fill `TBD` Azure SQL config in `00_config` | 4 min |
+| 2a | `02a_create_schema_azuresql` | 1 min |
+| 3 | `03_register_zero_copy` | 3 min |
+| 4 | `04_firmwide_reference` | 2 min |
+| 5a | `05a_claims_generator_azuresql` | 2 min |
+| 6a | `06a_bronze_ingest_azuresql` + `07_medallion_dlt` | 10 min |
+| 7 | `08_dashboard` | 5 min |
+| 8 | `09_genie_setup` | 5 min |
+| — | `10_deploy_pipeline_and_jobs` (`source=azuresql`; automates 5a/6a/7) | 3 min |
 | 9 | Demo / talk track | — |
 | 10 | Teardown | 3 min |
 
@@ -77,8 +96,46 @@ climbs each cycle.
 
 ## One-shot automation · `10_deploy_pipeline_and_jobs`
 Run all cells to create the DLT pipeline, schedule the **generator** and **bronze** jobs every
-2 minutes, and start the pipeline. **Verify:** it prints a `pipeline_id` and two `job_id`s and
-`started pipeline update`.
+2 minutes, and start the pipeline. Leave the `source` widget on **`lakebase`** (default) for
+the standard path, or set it to **`azuresql`** for the optional path below. **Verify:** it
+prints a `pipeline_id` and two `job_id`s and `started pipeline update`.
+
+---
+
+## Optional Phase — land in Azure SQL Server instead of Lakebase
+A bring-your-own-Azure-SQL alternative to Lakebase. The synthetic generator writes the same
+4–5 claims every 2 minutes into an Azure SQL Database; ingest lands them in the same
+`bronze.claims_raw`, so **silver/gold/DLT/dashboard/Genie are identical** to the default path.
+
+**Prereqs**
+- An Azure SQL Server + Database reachable from the workspace (SQL firewall: *Allow Azure
+  services*, or add the workspace egress IPs). Zero-copy federation is Lakebase-only, so this
+  path reads over JDBC (the SQL Server driver ships with the runtime — no `%pip`).
+- In `notebooks/00_config`, replace the `TBD`s: `AZ_SQL_SERVER`, `AZ_SQL_DATABASE`,
+  `AZ_SQL_SECRET_SCOPE`. Store the login in that secret scope:
+  ```
+  databricks secrets create-scope <your-scope>
+  databricks secrets put-secret  <your-scope> azuresql_user
+  databricks secrets put-secret  <your-scope> azuresql_password
+  ```
+
+**Run**
+1. `02a_create_schema_azuresql` — creates `claims.claim_transactions` in Azure SQL.
+   **Verify:** prints `claims.claim_transactions ready` and `columns: 14`.
+2. `03_register_zero_copy` — still run this for the `allianz_hackathon` catalog + medallion
+   schemas (the Lakebase zero-copy catalog it also registers is simply unused here).
+3. `04_firmwide_reference` — same as the default path.
+4. Stream: **live demo** → `05a_claims_generator_azuresql` with `mode = loop`, then run
+   `06a_bronze_ingest_azuresql`. **Hands-off** → run `10_deploy_pipeline_and_jobs` with the
+   `source` widget = **`azuresql`** (schedules 05a + 06a every 2 min; jobs are suffixed
+   `_azuresql`).
+   **Verify:** `SELECT count(*) FROM allianz_hackathon.bronze.claims_raw;` climbs each cycle.
+
+⚠️ Pick **one** source per `bronze.claims_raw`. Don't run both `06` and `06a` against the same
+bronze table — the `claim_txn_id` watermarks come from two different databases and will collide.
+
+**Teardown adds:** Workflows → delete `..._generator_2min_azuresql` and
+`..._bronze_ingest_2min_azuresql`; drop `claims.claim_transactions` on the Azure SQL server.
 
 ---
 

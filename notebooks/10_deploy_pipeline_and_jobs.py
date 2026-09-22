@@ -3,10 +3,16 @@
 # MAGIC # 10 · Deploy the DLT pipeline + 2-minute jobs (SDK, no CLI)
 # MAGIC Creates, all from this notebook:
 # MAGIC * the **Lakeflow Declarative Pipeline** (silver + gold) attached to `07_medallion_dlt`
-# MAGIC * a **generator job** running `05_claims_generator` (mode=once) every 2 minutes
-# MAGIC * a **bronze ingest job** running `06_bronze_ingest` every 2 minutes
+# MAGIC * a **generator job** every 2 minutes (mode=once)
+# MAGIC * a **bronze ingest job** every 2 minutes
 # MAGIC
-# MAGIC Assumes notebooks 00–07 already live in this same workspace folder.
+# MAGIC Pick the OLTP source with the **`source`** widget:
+# MAGIC * **`lakebase`** (default) → schedules `05_claims_generator` + `06_bronze_ingest`
+# MAGIC * **`azuresql`** (optional) → schedules `05a_claims_generator_azuresql` +
+# MAGIC   `06a_bronze_ingest_azuresql` (requires the Azure SQL config + `02a` run first)
+# MAGIC
+# MAGIC The DLT pipeline reads from `bronze.claims_raw` either way, so it's identical for both.
+# MAGIC Assumes the relevant notebooks already live in this same workspace folder.
 
 # COMMAND ----------
 
@@ -19,6 +25,17 @@ from databricks.sdk.service.pipelines import PipelineLibrary, NotebookLibrary
 from databricks.sdk.service.jobs import Task, NotebookTask, CronSchedule, PauseStatus
 
 w = WorkspaceClient()
+
+dbutils.widgets.dropdown("source", "lakebase", ["lakebase", "azuresql"], "OLTP source")
+SOURCE = dbutils.widgets.get("source")
+
+# notebooks to schedule for the chosen source (both feed the same bronze.claims_raw)
+GEN_NB, BRONZE_NB = {
+    "lakebase": ("05_claims_generator", "06_bronze_ingest"),
+    "azuresql": ("05a_claims_generator_azuresql", "06a_bronze_ingest_azuresql"),
+}[SOURCE]
+SUFFIX = "" if SOURCE == "lakebase" else "_azuresql"
+print(f"source = {SOURCE}  ->  generator={GEN_NB}, bronze={BRONZE_NB}")
 
 # folder that holds these notebooks (so job/pipeline paths are correct)
 nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
@@ -78,8 +95,8 @@ def upsert_job(name: str, notebook: str, params: dict):
     return created.job_id
 
 
-gen_job = upsert_job("allianz_hackathon_generator_2min", "05_claims_generator", {"mode": "once"})
-bronze_job = upsert_job("allianz_hackathon_bronze_ingest_2min", "06_bronze_ingest", {})
+gen_job = upsert_job(f"allianz_hackathon_generator_2min{SUFFIX}", GEN_NB, {"mode": "once"})
+bronze_job = upsert_job(f"allianz_hackathon_bronze_ingest_2min{SUFFIX}", BRONZE_NB, {})
 
 # COMMAND ----------
 
