@@ -70,7 +70,7 @@ lands them in Azure SQL Server. Run the notebooks top-to-bottom within whichever
 | 07 | `notebooks/07_medallion_dlt` | DLT: `silver.claims` (DQ expectations) + `gold.*` (aggregates + correlation). |
 | 08 | `notebooks/08_dashboard` | Gold-layer queries for the AI/BI dashboard. |
 | 09 | `notebooks/09_genie_setup` | Genie space tables, instructions, sample questions. |
-| 10 | `notebooks/10_deploy_pipeline_and_jobs` | Create the DLT pipeline + the two 2-minute jobs (SDK). |
+| 10 | `notebooks/10_deploy_pipeline_and_jobs` | Create the medallion + the two 2-minute jobs (SDK). `engine` widget = `dlt` (default) or `batch` (schedules `07_medallion_no_dlt` when the `dlt` module is unavailable). |
 
 ### Optional path — Azure SQL Server (run in order)
 
@@ -91,7 +91,7 @@ dashboard, and Genie layers are unchanged because everything still flows through
 | 07 | `notebooks/07_medallion_dlt` | DLT: `silver.claims` + `gold.*` (identical to the Lakebase path). |
 | 08 | `notebooks/08_dashboard` | Gold-layer queries for the AI/BI dashboard. |
 | 09 | `notebooks/09_genie_setup` | Genie space tables, instructions, sample questions. |
-| 10 | `notebooks/10_deploy_pipeline_and_jobs` | Set `source` widget = `azuresql` to schedule `05a` + `06a` every 2 minutes. |
+| 10 | `notebooks/10_deploy_pipeline_and_jobs` | Set `source` = `azuresql` to schedule `05a` + `06a` every 2 minutes (+ `engine` = `dlt` or `batch`). |
 
 Bring your own Azure SQL Server (a notebook can't provision Azure infra). In `00_config`,
 fill in the `TBD` values (`AZ_SQL_SERVER`, `AZ_SQL_DATABASE`, `AZ_SQL_SECRET_SCOPE`) and store
