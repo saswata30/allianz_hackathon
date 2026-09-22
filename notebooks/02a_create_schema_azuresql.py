@@ -6,7 +6,7 @@
 # MAGIC
 # MAGIC Creates `claims.claim_transactions` in your Azure SQL Database. The table mirrors the
 # MAGIC Lakebase schema exactly (same columns, a monotonic `claim_txn_id` watermark) so the
-# MAGIC downstream medallion / DLT / dashboard / Genie all work unchanged.
+# MAGIC downstream medallion / dashboard / Genie all work unchanged.
 # MAGIC
 # MAGIC **Prerequisites** (bring your own Azure SQL — a notebook can't provision Azure infra):
 # MAGIC * An Azure SQL Server + Database reachable from the workspace (firewall: *Allow Azure

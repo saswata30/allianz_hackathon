@@ -4,7 +4,7 @@
 # MAGIC The **Azure SQL** twin of `06_bronze_ingest`. Reads only the **new** rows from the
 # MAGIC Azure SQL `claim_transactions` table over a JDBC connection, using a high-watermark on
 # MAGIC the monotonic `claim_txn_id`, and appends to the same `bronze.claims_raw` Delta table.
-# MAGIC Everything downstream (silver/gold/DLT/dashboard/Genie) is therefore identical to the
+# MAGIC Everything downstream (silver/gold/dashboard/Genie) is therefore identical to the
 # MAGIC Lakebase path. Idempotent. Schedule as a **job every 2 minutes** (notebook 10 with
 # MAGIC `source=azuresql`).
 # MAGIC

@@ -1,19 +1,16 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 07 (no-DLT) · Medallion SILVER + GOLD in plain PySpark
-# MAGIC A drop-in alternative to `07_medallion_dlt` for workspaces where **Lakeflow Declarative
-# MAGIC Pipelines (the `dlt` module) aren't available**. Same transformations, same output tables
-# MAGIC — just plain Spark batch writes instead of a DLT pipeline:
+# MAGIC # 07 · Medallion SILVER + GOLD in plain PySpark
+# MAGIC Builds the medallion with plain Spark batch writes — no `dlt` module required:
 # MAGIC
 # MAGIC * `silver.claims` — cleansed, typed, **quality-checked** claims (bad rows dropped, warn
 # MAGIC   rules reported), rebuilt from `bronze.claims_raw`.
 # MAGIC * `gold.gold_claims_by_lob_region`, `gold.gold_loss_ratio`, `gold.gold_claims_daily` —
 # MAGIC   aggregates + firmwide correlation.
 # MAGIC
-# MAGIC Idempotent: each run **fully rebuilds** silver + gold from the current bronze (mirrors the
-# MAGIC materialized-view semantics of the DLT version). Run after `06`/`06a`, or schedule it every
-# MAGIC 2 minutes as a job (see notebook 10, `engine=batch`). Works for **both** the Lakebase and
-# MAGIC Azure SQL source paths — it only reads `bronze.claims_raw`.
+# MAGIC Idempotent: each run **fully rebuilds** silver + gold from the current bronze. Run after
+# MAGIC `06`/`06a`, or schedule it every 2 minutes as a job (see notebook 10). Works for **both**
+# MAGIC the Lakebase and Azure SQL source paths — it only reads `bronze.claims_raw`.
 
 # COMMAND ----------
 
@@ -30,7 +27,6 @@ GOLD_CLAIMS_DAILY  = f"{CATALOG}.{GOLD_SCHEMA}.gold_claims_daily"
 VALID_LOBS = ["Property", "Motor", "Liability", "Marine", "Health", "Life"]
 VALID_CCY = ["EUR", "GBP", "CHF", "USD"]
 
-# Same expectations as the DLT version.
 DQ_DROP = {
     "valid_claim_id": "claim_id IS NOT NULL",
     "valid_policy_id": "policy_id IS NOT NULL",
@@ -89,7 +85,7 @@ silver_count = silver.count()
 print(f"data quality (drop): {bronze_count} bronze -> {silver_count} silver "
       f"({bronze_count - silver_count} rows dropped)")
 
-# WARN rules: keep the rows, just report violations (mirrors @dlt.expect_all).
+# WARN rules: keep the rows, just report violations.
 for name, cond in DQ_WARN.items():
     warn_violations = silver.where(f"NOT ({cond})").count()
     print(f"  warn '{name}': {warn_violations} rows violate `{cond}`")

@@ -14,7 +14,7 @@ profile, no workspace host. Each step lists **what to run**, **what you should s
 | 3 | `03_register_zero_copy` | 3 min |
 | 4 | `04_firmwide_reference` | 2 min |
 | 5 | `05_claims_generator` | 2 min |
-| 6 | `06_bronze_ingest` + `07_medallion_dlt` | 10 min |
+| 6 | `06_bronze_ingest` + `07_medallion_no_dlt` | 10 min |
 | 7 | `08_dashboard` | 5 min |
 | 8 | `09_genie_setup` | 5 min |
 | — | `10_deploy_pipeline_and_jobs` (automates 5–7) | 3 min |
@@ -31,7 +31,7 @@ profile, no workspace host. Each step lists **what to run**, **what you should s
 | 3 | `03_register_zero_copy` | 3 min |
 | 4 | `04_firmwide_reference` | 2 min |
 | 5a | `05a_claims_generator_azuresql` | 2 min |
-| 6a | `06a_bronze_ingest_azuresql` + `07_medallion_dlt` | 10 min |
+| 6a | `06a_bronze_ingest_azuresql` + `07_medallion_no_dlt` | 10 min |
 | 7 | `08_dashboard` | 5 min |
 | 8 | `09_genie_setup` | 5 min |
 | — | `10_deploy_pipeline_and_jobs` (`source=azuresql`; automates 5a/6a/7) | 3 min |
@@ -44,7 +44,7 @@ profile, no workspace host. Each step lists **what to run**, **what you should s
 - **Workspace → Repos → Add repo** → `https://github.com/saswata30/allianz_hackathon.git`
   (or **Git folder**). Open the `notebooks/` folder.
 - Requirements: a **serverless** workspace with **Lakebase** enabled and rights to create
-  catalogs, Lakebase instances, pipelines, and jobs.
+  catalogs, Lakebase instances, and jobs.
 - Optionally edit `notebooks/00_config` if you want different names (defaults are fine).
 
 ---
@@ -85,33 +85,28 @@ Run all cells. **Verify:** the final query shows 6 LOBs, 8 regions each (48 rows
 climbs each cycle.
 💡 Seed history fast: run `05` a few times with `mode=once`.
 
-## Phase 6 — Medallion · `06_bronze_ingest` then `07_medallion_dlt`
+## Phase 6 — Medallion · `06_bronze_ingest` then `07_medallion_no_dlt`
 - Run **06** once now → appends new rows to `bronze.claims_raw`.
   **Verify:** `SELECT count(*) FROM allianz_hackathon.bronze.claims_raw;` > 0.
-- Create/start the DLT pipeline for **07** — easiest via **notebook 10** (below), or manually:
-  **Pipelines → Create**, attach `notebooks/07_medallion_dlt`, target catalog
-  `allianz_hackathon` / schema `silver`, serverless, then **Start**.
-  **Verify:** watch DQ metrics on the `claims` node; then
+- Run **07** — plain PySpark that rebuilds `silver.claims` + `gold.*` from bronze (idempotent;
+  no `dlt` module needed). Schedule it via **notebook 10** (below), or run it by hand.
+  **Verify:** it prints the drop/warn DQ counts as it rebuilds silver; then
   `SELECT * FROM allianz_hackathon.gold.gold_loss_ratio ORDER BY observed_loss_ratio DESC;`
 
 ## One-shot automation · `10_deploy_pipeline_and_jobs`
-Run all cells to build the medallion and schedule the **generator** and **bronze** jobs every
-2 minutes. Two widgets:
+Run all cells to schedule the **generator**, **bronze ingest**, and **medallion**
+(`07_medallion_no_dlt`) as three 2-minute jobs. One widget:
 - **`source`** — `lakebase` (default) or `azuresql` (the optional path below).
-- **`engine`** — `dlt` (default): create + start the DLT pipeline on `07_medallion_dlt`; or
-  `batch`: schedule `07_medallion_no_dlt` as a 2-minute job instead (use this when the `dlt`
-  module isn't available in your workspace).
 
-**Verify (engine=dlt):** it prints a `pipeline_id`, two `job_id`s, and `started pipeline update`.
-**Verify (engine=batch):** no `pipeline_id`; it prints three `job_id`s incl.
-`allianz_hackathon_medallion_batch_2min`, and silver/gold populate within ~2 min.
+**Verify:** it prints three `job_id`s incl. `allianz_hackathon_medallion_batch_2min`, and
+silver/gold populate within ~2 min.
 
 ---
 
 ## Optional Phase — land in Azure SQL Server instead of Lakebase
 A bring-your-own-Azure-SQL alternative to Lakebase. The synthetic generator writes the same
 4–5 claims every 2 minutes into an Azure SQL Database; ingest lands them in the same
-`bronze.claims_raw`, so **silver/gold/DLT/dashboard/Genie are identical** to the default path.
+`bronze.claims_raw`, so **silver/gold/dashboard/Genie are identical** to the default path.
 
 **Prereqs**
 - An Azure SQL Server + Database reachable from the workspace (SQL firewall: *Allow Azure
@@ -161,13 +156,13 @@ tables, paste the instructions, add the sample questions. Ask:
 ## Phase 9 — Demo / talk track (2 min)
 1. **Source** — `05` inserting rows into Lakebase (OLTP).
 2. **Zero-copy** — `SELECT count(*) FROM lakebase_allianz.claims.claim_transactions` — live, no copy.
-3. **Quality** — DLT graph → silver DQ metrics (dropped bad rows).
+3. **Quality** — `07_medallion_no_dlt` output → silver DQ counts (dropped bad rows).
 4. **Business value** — dashboard `gold_loss_ratio`: streaming claims vs firmwide premium, every 2 min.
 5. **Self-service** — ask Genie in plain English.
 
 ## Phase 10 — Teardown
-- Pipelines → delete `allianz_hackathon_medallion`.
-- Workflows → delete `allianz_hackathon_generator_2min` and `allianz_hackathon_bronze_ingest_2min`.
+- Workflows → delete `allianz_hackathon_generator_2min`, `allianz_hackathon_bronze_ingest_2min`,
+  and `allianz_hackathon_medallion_batch_2min`.
 - Compute → Database instances → delete `allianz-hackathon-db` (removes all OLTP data).
 - Catalog Explorer → delete `allianz_hackathon` and `lakebase_allianz`.
 
@@ -181,5 +176,5 @@ tables, paste the instructions, add the sample questions. Ask:
 | `permission denied for schema public` | expected — we create and use `claims_db` |
 | zero-copy SELECT errors | finish notebook 03 (or register the catalog via Catalog Explorer) |
 | bronze count stuck at 0 | is the generator running? does the zero-copy SELECT return rows? |
-| DLT silver empty | run `06_bronze_ingest` first; DLT streams *from* bronze |
+| silver empty | run `06_bronze_ingest` first; `07_medallion_no_dlt` reads *from* bronze |
 | `%pip`/import errors | re-run the `%pip` + `dbutils.library.restartPython()` cells at the top |

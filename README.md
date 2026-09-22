@@ -2,8 +2,8 @@
 
 A hands-on, **notebook-driven** workshop that streams synthetic P&C **claims into Lakebase**
 (managed Postgres), ingests them into the lakehouse **zero-copy via Unity Catalog**, refines
-them through a **medallion architecture with data-quality checks** (Lakeflow Declarative
-Pipelines), **correlates** them against a firmwide book of business, and serves the result
+them through a **medallion architecture with data-quality checks** (plain PySpark batch),
+**correlates** them against a firmwide book of business, and serves the result
 through an **AI/BI dashboard** and a **Genie** natural-language space.
 
 Everything runs **inside Databricks** — the notebooks authenticate automatically as the
@@ -67,16 +67,16 @@ lands them in Azure SQL Server. Run the notebooks top-to-bottom within whichever
 | 04 | `notebooks/04_firmwide_reference` | Firmwide book-of-business Delta table (correlation). |
 | 05 | `notebooks/05_claims_generator` | Synthetic claims → Lakebase (4–5 rows/batch; `once` or `loop`). |
 | 06 | `notebooks/06_bronze_ingest` | Zero-copy incremental read → `bronze.claims_raw`. |
-| 07 | `notebooks/07_medallion_dlt` | DLT: `silver.claims` (DQ expectations) + `gold.*` (aggregates + correlation). |
+| 07 | `notebooks/07_medallion_no_dlt` | PySpark batch: `silver.claims` (DQ checks) + `gold.*` (aggregates + correlation). |
 | 08 | `notebooks/08_dashboard` | Gold-layer queries for the AI/BI dashboard. |
 | 09 | `notebooks/09_genie_setup` | Genie space tables, instructions, sample questions. |
-| 10 | `notebooks/10_deploy_pipeline_and_jobs` | Create the medallion + the two 2-minute jobs (SDK). `engine` widget = `dlt` (default) or `batch` (schedules `07_medallion_no_dlt` when the `dlt` module is unavailable). |
+| 10 | `notebooks/10_deploy_pipeline_and_jobs` | Schedule the generator, bronze ingest, and `07_medallion_no_dlt` as three 2-minute jobs (SDK). |
 
 ### Optional path — Azure SQL Server (run in order)
 
 An alternative OLTP source: generate the same synthetic claims every 2 minutes into an
 **Azure SQL Database** rather than Lakebase. This path uses its own notebooks at the source
-steps (`02a`, `05a`, `06a`) and **skips `01`** (no Lakebase to provision). The medallion, DLT,
+steps (`02a`, `05a`, `06a`) and **skips `01`** (no Lakebase to provision). The medallion,
 dashboard, and Genie layers are unchanged because everything still flows through the same
 `bronze.claims_raw`.
 
@@ -88,10 +88,10 @@ dashboard, and Genie layers are unchanged because everything still flows through
 | 04 | `notebooks/04_firmwide_reference` | Firmwide book-of-business Delta table (correlation). |
 | 05a | `notebooks/05a_claims_generator_azuresql` | Synthetic claims → **Azure SQL** (4–5 rows/batch; `once` or `loop`). |
 | 06a | `notebooks/06a_bronze_ingest_azuresql` | Incremental JDBC read (watermark on `claim_txn_id`) → `bronze.claims_raw`. |
-| 07 | `notebooks/07_medallion_dlt` | DLT: `silver.claims` + `gold.*` (identical to the Lakebase path). |
+| 07 | `notebooks/07_medallion_no_dlt` | PySpark batch: `silver.claims` + `gold.*` (identical to the Lakebase path). |
 | 08 | `notebooks/08_dashboard` | Gold-layer queries for the AI/BI dashboard. |
 | 09 | `notebooks/09_genie_setup` | Genie space tables, instructions, sample questions. |
-| 10 | `notebooks/10_deploy_pipeline_and_jobs` | Set `source` = `azuresql` to schedule `05a` + `06a` every 2 minutes (+ `engine` = `dlt` or `batch`). |
+| 10 | `notebooks/10_deploy_pipeline_and_jobs` | Set `source` = `azuresql` to schedule `05a` + `06a` + `07_medallion_no_dlt` every 2 minutes. |
 
 Bring your own Azure SQL Server (a notebook can't provision Azure infra). In `00_config`,
 fill in the `TBD` values (`AZ_SQL_SERVER`, `AZ_SQL_DATABASE`, `AZ_SQL_SECRET_SCOPE`) and store
@@ -107,9 +107,9 @@ Azure SQL path reads over JDBC rather than the zero-copy UC catalog. Pick **one*
    `https://github.com/saswata30/allianz_hackathon.git` (or *Git folder*).
 2. Open **`notebooks/01_provision_lakebase`** and run it; wait for `AVAILABLE`.
 3. Run **02 → 03 → 04** in order (each prints the next step).
-4. Run **`notebooks/10_deploy_pipeline_and_jobs`** — this schedules the generator and bronze
-   ingest every 2 minutes and starts the DLT pipeline. *(For a manual/live demo instead, run
-   05 with `mode=loop`, then 06, then start the pipeline from 07.)*
+4. Run **`notebooks/10_deploy_pipeline_and_jobs`** — this schedules the generator, bronze
+   ingest, and the medallion (`07_medallion_no_dlt`) every 2 minutes. *(For a manual/live demo
+   instead, run 05 with `mode=loop`, then 06, then 07.)*
 5. Build the **dashboard** from **08** and the **Genie space** from **09**.
 
 > **Azure SQL variant:** skip step 2, fill in the `TBD` Azure SQL config in `00_config`, then
@@ -117,14 +117,14 @@ Azure SQL path reads over JDBC rather than the zero-copy UC catalog. Pick **one*
 > `05a` in `loop` mode + `06a` manually). See *Optional — land in Azure SQL Server* above.
 
 > Prerequisites: a **serverless** Databricks workspace with **Lakebase** enabled, and
-> permission to create catalogs, Lakebase instances, pipelines, and jobs. The workshop uses
+> permission to create catalogs, Lakebase instances, and jobs. The workshop uses
 > only the built-in runtime + SDK; `%pip` installs `psycopg2-binary`/`Faker` where needed.
 
 ---
 
 ## Data quality (medallion expectations)
 
-Defined on `silver.claims` in `notebooks/07_medallion_dlt`:
+Defined on `silver.claims` in `notebooks/07_medallion_no_dlt`:
 
 | Rule | Type | Expectation |
 |---|---|---|
@@ -135,7 +135,7 @@ Defined on `silver.claims` in `notebooks/07_medallion_dlt`:
 | `dates_consistent` | warn | `reported_date >= incident_date` |
 | `amount_not_extreme` | warn | `claim_amount < 5,000,000` |
 
-Dropped/flagged counts show automatically on the pipeline's `silver.claims` node.
+Dropped/flagged counts print automatically when the medallion job rebuilds `silver.claims`.
 
 ---
 
@@ -153,6 +153,6 @@ SELECT count(*) FROM lakebase_allianz.claims.claim_transactions;
 ---
 
 ## Teardown
-Stop the two jobs and the pipeline, then delete the Lakebase instance and catalogs
+Stop the three jobs, then delete the Lakebase instance and catalogs
 (Compute → Database instances → delete; Catalog Explorer → delete `allianz_hackathon` and
 `lakebase_allianz`). Deleting the Lakebase instance removes all OLTP data.
