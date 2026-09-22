@@ -95,10 +95,16 @@ climbs each cycle.
   `SELECT * FROM allianz_hackathon.gold.gold_loss_ratio ORDER BY observed_loss_ratio DESC;`
 
 ## One-shot automation · `10_deploy_pipeline_and_jobs`
-Run all cells to create the DLT pipeline, schedule the **generator** and **bronze** jobs every
-2 minutes, and start the pipeline. Leave the `source` widget on **`lakebase`** (default) for
-the standard path, or set it to **`azuresql`** for the optional path below. **Verify:** it
-prints a `pipeline_id` and two `job_id`s and `started pipeline update`.
+Run all cells to build the medallion and schedule the **generator** and **bronze** jobs every
+2 minutes. Two widgets:
+- **`source`** — `lakebase` (default) or `azuresql` (the optional path below).
+- **`engine`** — `dlt` (default): create + start the DLT pipeline on `07_medallion_dlt`; or
+  `batch`: schedule `07_medallion_no_dlt` as a 2-minute job instead (use this when the `dlt`
+  module isn't available in your workspace).
+
+**Verify (engine=dlt):** it prints a `pipeline_id`, two `job_id`s, and `started pipeline update`.
+**Verify (engine=batch):** no `pipeline_id`; it prints three `job_id`s incl.
+`allianz_hackathon_medallion_batch_2min`, and silver/gold populate within ~2 min.
 
 ---
 
