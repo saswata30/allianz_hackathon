@@ -55,3 +55,21 @@ flowchart LR
 - **Zero-copy** removes the usual CDC/connector plumbing between the operational DB and the lakehouse.
 - **Medallion + DLT expectations** make data quality a first-class, observable part of the pipeline rather than an afterthought.
 - **Firmwide correlation** turns raw claim events into a business KPI (loss ratio vs plan) the moment they land.
+
+## Optional source — Azure SQL Server
+
+The OLTP landing zone is pluggable. Instead of Lakebase, the generator can write the same
+claims into an **Azure SQL Database** (notebooks `02a` / `05a` / `06a`), and bronze ingest
+reads them incrementally over **JDBC**:
+
+```mermaid
+flowchart LR
+  GEN["05a_claims_generator_azuresql<br/>4-5 rows / 2 min"] -->|INSERT via JDBC| AZ[("Azure SQL Database<br/>claims.claim_transactions")]
+  AZ -->|"JDBC watermark read (06a)"| BR["bronze.claims_raw"]
+  BR -->|unchanged| DOWN["silver → gold → dashboard / Genie"]
+```
+
+Everything from `bronze.claims_raw` onward is identical to the Lakebase path. The trade-off:
+Azure SQL has no Databricks **zero-copy** federation, so this path uses a real JDBC connector
+(watermark on `claim_txn_id`) rather than the zero-copy UC catalog. Pick one source per
+`bronze.claims_raw` — the two databases issue independent `claim_txn_id` sequences.
