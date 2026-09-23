@@ -24,30 +24,40 @@ LB_TABLE = "claim_transactions"
 # --- Zero-copy: Lakebase registered into Unity Catalog ------------------------
 LAKEBASE_UC_CATALOG = "lakebase_allianz"   # SELECT * FROM lakebase_allianz.claims.claim_transactions
 
-# --- Azure SQL Server (OPTIONAL alternative OLTP landing) ---------------------
-# Bring-your-own Azure SQL Database. The workshop can generate claims into Azure
-# SQL instead of Lakebase (notebooks 02a / 05a / 06a). Edit the TBDs below and store
-# the login in a Databricks secret scope before running the Azure SQL path, e.g.:
-#   databricks secrets create-scope <your-scope>
-#   databricks secrets put-secret  <your-scope> azuresql_user
-#   databricks secrets put-secret  <your-scope> azuresql_password
-# >>> Developer: fill these in. Everything marked TBD must be set before running the
-# >>> Azure SQL path (02a / 05a / 06a). The Lakebase path (default) ignores all of this.
-AZ_SQL_SERVER       = "TBD"   # e.g. my-sql-server.database.windows.net
-AZ_SQL_PORT         = 1433
-AZ_SQL_DATABASE     = "TBD"   # database must already exist on the server (e.g. claims_db)
+# --- Azure SQL (OPTIONAL alternative OLTP landing) ----------------------------
+# Target: an Azure SQL Managed Instance reached over its PUBLIC endpoint (port 3342).
+# The workshop can generate claims into Azure SQL instead of Lakebase (02a / 05a / 06a).
+#
+# SECRETS — the SQL login is NEVER stored in this (public) repo. Before running the
+# Azure SQL path, store the login once in a Databricks secret scope:
+#   databricks secrets create-scope allianz_hackathon
+#   databricks secrets put-secret  allianz_hackathon azuresql_user      # value: databricks_svc
+#   databricks secrets put-secret  allianz_hackathon azuresql_password  # value: <the SQL password>
+# (or set them in the workspace UI: Compute → Secrets, or the Secrets REST API).
+#
+# MI public-endpoint prereqs: the managed instance must have the public endpoint
+# ENABLED, and its NSG must allow inbound TCP 3342 from the Databricks/serverless egress.
+AZ_SQL_SERVER       = "hacking-sql-mi.public.bddadad65355.database.windows.net"
+AZ_SQL_PORT         = 3342     # SQL MI public endpoint (private endpoint uses 1433)
+AZ_SQL_DATABASE     = "Hacking_SQL_Test"
 AZ_SQL_SCHEMA       = "claims"
 AZ_SQL_TABLE        = "claim_transactions"
 AZ_SQL_DRIVER       = "com.microsoft.sqlserver.jdbc.SQLServerDriver"  # bundled in DBR
-AZ_SQL_SECRET_SCOPE = "TBD"   # Databricks secret scope holding the SQL login
-AZ_SQL_USER_KEY     = "azuresql_user"
+AZ_SQL_SECRET_SCOPE = "allianz_hackathon"   # secret scope holding the SQL login
+AZ_SQL_USER_KEY     = "azuresql_user"       # -> databricks_svc
 AZ_SQL_PASSWORD_KEY = "azuresql_password"
 
 AZ_SQL_FQ_TABLE = f"{AZ_SQL_SCHEMA}.{AZ_SQL_TABLE}"
 
 
 def azure_sql_jdbc_url():
-    """JDBC URL for the Azure SQL Database (encrypted, verifying the server cert)."""
+    """JDBC URL for Azure SQL (Managed Instance public endpoint), encrypted + cert-verified.
+
+    hostNameInCertificate=*.database.windows.net matches the MI TLS cert. If the TLS
+    handshake fails on the public endpoint, a demo fallback is to drop
+    hostNameInCertificate and set trustServerCertificate=true (skips cert validation —
+    less secure, so prefer fixing the cert/DNS path).
+    """
     return (
         f"jdbc:sqlserver://{AZ_SQL_SERVER}:{AZ_SQL_PORT};"
         f"database={AZ_SQL_DATABASE};encrypt=true;trustServerCertificate=false;"
