@@ -82,7 +82,7 @@ dashboard, and Genie layers are unchanged because everything still flows through
 
 | # | Notebook | What it does |
 |---|---|---|
-| 00 | `notebooks/00_config` | Shared names — fill in the `TBD` Azure SQL values here first. |
+| 00 | `notebooks/00_config` | Shared names + the Azure SQL MI endpoint (pre-filled). Only the secret scope login needs setting. |
 | 02a | `notebooks/02a_create_schema_azuresql` | Create `claims.claim_transactions` in Azure SQL (JDBC). |
 | 03 | `notebooks/03_register_zero_copy` | Create the `allianz_hackathon` catalog + medallion schemas (the zero-copy catalog it also registers is unused here). |
 | 04 | `notebooks/04_firmwide_reference` | Firmwide book-of-business Delta table (correlation). |
@@ -93,11 +93,18 @@ dashboard, and Genie layers are unchanged because everything still flows through
 | 09 | `notebooks/09_genie_setup` | Genie space tables, instructions, sample questions. |
 | 10 | `notebooks/10_deploy_pipeline_and_jobs` | Set `source` = `azuresql` to schedule `05a` + `06a` + `07_medallion_no_dlt` every 2 minutes. |
 
-Bring your own Azure SQL Server (a notebook can't provision Azure infra). In `00_config`,
-fill in the `TBD` values (`AZ_SQL_SERVER`, `AZ_SQL_DATABASE`, `AZ_SQL_SECRET_SCOPE`) and store
-the SQL login in a Databricks secret scope. Zero-copy federation is Lakebase-only, so the
-Azure SQL path reads over JDBC rather than the zero-copy UC catalog. Pick **one** source per
-`bronze.claims_raw` — don't run both `06` and `06a` against it.
+The Azure SQL endpoint is pre-filled in `00_config` (an Azure SQL Managed Instance on its
+public endpoint, port `3342`). You only need to store the SQL login in the `allianz_hackathon`
+secret scope — the password is never kept in this repo:
+```
+databricks secrets create-scope allianz_hackathon
+databricks secrets put-secret allianz_hackathon azuresql_user      # value: databricks_svc
+databricks secrets put-secret allianz_hackathon azuresql_password  # value: your SQL password
+```
+To point at a different server instead, edit `AZ_SQL_SERVER` / `AZ_SQL_PORT` / `AZ_SQL_DATABASE`
+in `00_config`. Zero-copy federation is Lakebase-only, so the Azure SQL path reads over JDBC
+rather than the zero-copy UC catalog. Pick **one** source per `bronze.claims_raw` — don't run
+both `06` and `06a` against it.
 
 ---
 
@@ -112,9 +119,10 @@ Azure SQL path reads over JDBC rather than the zero-copy UC catalog. Pick **one*
    instead, run 05 with `mode=loop`, then 06, then 07.)*
 5. Build the **dashboard** from **08** and the **Genie space** from **09**.
 
-> **Azure SQL variant:** skip step 2, fill in the `TBD` Azure SQL config in `00_config`, then
-> run `02a → 03 → 04`, and in step 4 run `10` with the `source` widget = `azuresql` (or run
-> `05a` in `loop` mode + `06a` manually). See *Optional — land in Azure SQL Server* above.
+> **Azure SQL variant:** skip step 2, store the SQL login in the `allianz_hackathon` secret
+> scope (the endpoint is already set in `00_config`), then run `02a → 03 → 04`, and in step 4
+> run `10` with the `source` widget = `azuresql` (or run `05a` in `loop` mode + `06a` manually).
+> See *Optional — land in Azure SQL Server* above.
 
 > Prerequisites: a **serverless** Databricks workspace with **Lakebase** enabled, and
 > permission to create catalogs, Lakebase instances, and jobs. The workshop uses

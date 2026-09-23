@@ -26,7 +26,7 @@ profile, no workspace host. Each step lists **what to run**, **what you should s
 
 | Phase | Notebook | ~Time |
 |---|---|---|
-| 0 | Add repo to workspace + fill `TBD` Azure SQL config in `00_config` | 4 min |
+| 0 | Add repo to workspace + store the Azure SQL login in the `allianz_hackathon` secret scope | 4 min |
 | 2a | `02a_create_schema_azuresql` | 1 min |
 | 3 | `03_register_zero_copy` | 3 min |
 | 4 | `04_firmwide_reference` | 2 min |
@@ -109,16 +109,19 @@ A bring-your-own-Azure-SQL alternative to Lakebase. The synthetic generator writ
 `bronze.claims_raw`, so **silver/gold/dashboard/Genie are identical** to the default path.
 
 **Prereqs**
-- An Azure SQL Server + Database reachable from the workspace (SQL firewall: *Allow Azure
-  services*, or add the workspace egress IPs). Zero-copy federation is Lakebase-only, so this
-  path reads over JDBC (the SQL Server driver ships with the runtime — no `%pip`).
-- In `notebooks/00_config`, replace the `TBD`s: `AZ_SQL_SERVER`, `AZ_SQL_DATABASE`,
-  `AZ_SQL_SECRET_SCOPE`. Store the login in that secret scope:
+- The Azure SQL Managed Instance is reachable from the workspace on its **public endpoint**
+  (port `3342`): the public endpoint must be enabled and the NSG must allow inbound TCP 3342
+  from the Databricks/serverless egress. Zero-copy federation is Lakebase-only, so this path
+  reads over JDBC (the SQL Server driver ships with the runtime — no `%pip`).
+- The endpoint is pre-filled in `notebooks/00_config` (`AZ_SQL_SERVER` / `AZ_SQL_PORT` /
+  `AZ_SQL_DATABASE`). Store the SQL login in the `allianz_hackathon` secret scope (never in the
+  repo):
   ```
-  databricks secrets create-scope <your-scope>
-  databricks secrets put-secret  <your-scope> azuresql_user
-  databricks secrets put-secret  <your-scope> azuresql_password
+  databricks secrets create-scope allianz_hackathon
+  databricks secrets put-secret  allianz_hackathon azuresql_user      # value: databricks_svc
+  databricks secrets put-secret  allianz_hackathon azuresql_password  # value: your SQL password
   ```
+  (Point at a different server by editing the `AZ_SQL_*` values in `00_config`.)
 
 **Run**
 1. `02a_create_schema_azuresql` — creates `claims.claim_transactions` in Azure SQL.
